@@ -1,0 +1,20 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:restaurant-test;DB_CLOSE_DELAY=-1;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+  sql:
+    init:
+      mode: never
+
+jwt:
+  secret-key: dGVzdC1vbmx5LXNlY3JldC1rZXktZm9yLXJlc3RhdXJhbnQtc3lzdGVt
+
+logging:
+  level:
+    root: WARN

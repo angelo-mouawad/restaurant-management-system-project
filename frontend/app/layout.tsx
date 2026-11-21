@@ -1,35 +1,31 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import "@styles/global.css";
-import Header from "@components/Header";
-import Footer from "@components/Footer";
 import { AuthProvider } from "@components/AuthContext";
-import { ThemeProvider } from "@context/ThemeContext";
+import AppShell from "@components/layout/AppShell";
+import { ToastProvider } from "@components/ui/Toast";
 import { I18nProvider } from "@context/I18nContext";
+import { ThemeProvider } from "@context/ThemeContext";
 
 export const metadata: Metadata = {
   title: "Restaurant Management System",
-  description: "Manage restaurant stock, staff schedules and notifications.",
+  description: "Staff, shift planning, stock and purchase orders for a restaurant.",
 };
 
-const RootLayout = ({ children }: { children: ReactNode }) => {
-  return (
-    <html lang="en" suppressHydrationWarning>
-      <body>
-        <I18nProvider>
-          <ThemeProvider>
+const RootLayout = ({ children }: { children: ReactNode }) => (
+  <html lang="en" suppressHydrationWarning>
+    <body>
+      <I18nProvider>
+        <ThemeProvider>
+          <ToastProvider>
             <AuthProvider>
-              <Header />
-              <main className="min-h-screen bg-slate-50 pb-24 text-slate-900 transition-colors duration-300 dark:bg-slate-900 dark:text-slate-100">
-                {children}
-              </main>
-              <Footer />
+              <AppShell>{children}</AppShell>
             </AuthProvider>
-          </ThemeProvider>
-        </I18nProvider>
-      </body>
-    </html>
-  );
-};
+          </ToastProvider>
+        </ThemeProvider>
+      </I18nProvider>
+    </body>
+  </html>
+);
 
 export default RootLayout;

@@ -1,3 +1,5 @@
+-- The schema as it was before migrations were introduced. Existing databases are baselined at this version.
+
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,

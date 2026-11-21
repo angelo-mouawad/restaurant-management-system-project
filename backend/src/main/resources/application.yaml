@@ -19,20 +19,20 @@ spring:
     show-sql: false
     open-in-view: false
     hibernate:
+      # Flyway owns the schema (src/main/resources/db/migration).
       ddl-auto: none
     properties:
       hibernate:
         auto_quote_keyword: true
         format_sql: false
-  sql:
-    init:
-      mode: ${SQL_INIT_MODE:always}
-      continue-on-error: false
-  security:
-    oauth2:
-      resourceserver:
-        jwt:
-          authority-prefix: ""
+  flyway:
+    enabled: true
+    # Databases created before migrations existed already hold the V1 schema: mark it as applied and upgrade from there.
+    baseline-on-migrate: true
+    baseline-version: 1
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
 
 springdoc:
   swagger-ui:
@@ -47,6 +47,10 @@ jwt:
 cors:
   allowed-origins:
     - ${FRONTEND_ORIGIN:http://localhost:8080}
+
+app:
+  # Fills an empty database with demo users, shifts, stock and orders. Each part only runs when its tables are empty.
+  seed: ${SEED_DEMO_DATA:true}
 
 logging:
   level:

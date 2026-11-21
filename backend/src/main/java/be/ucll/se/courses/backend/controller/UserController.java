@@ -1,79 +1,103 @@
 package be.ucll.se.courses.backend.controller;
 
-import be.ucll.se.courses.backend.dtos.AuthenticationRequest;
-import be.ucll.se.courses.backend.dtos.AuthenticationResponse;
-import be.ucll.se.courses.backend.dtos.UserInput;
-import be.ucll.se.courses.backend.dtos.UserResponse;
+import be.ucll.se.courses.backend.dtos.UserDtos.ChangePasswordRequest;
+import be.ucll.se.courses.backend.dtos.UserDtos.CreateUserRequest;
+import be.ucll.se.courses.backend.dtos.UserDtos.ProfileResponse;
+import be.ucll.se.courses.backend.dtos.UserDtos.SetActiveRequest;
+import be.ucll.se.courses.backend.dtos.UserDtos.UpdateProfileRequest;
+import be.ucll.se.courses.backend.dtos.UserDtos.UpdateUserRequest;
+import be.ucll.se.courses.backend.dtos.UserDtos.UserResponse;
 import be.ucll.se.courses.backend.enums.Role;
 import be.ucll.se.courses.backend.service.UserService;
-import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.ResponseCookie;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.time.Duration;
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/users")
 public class UserController {
 
-    private static final String AUTH_COOKIE = "authToken";
-
     private final UserService userService;
 
-    @Autowired
     public UserController(UserService userService) {
         this.userService = userService;
     }
 
-    @PostMapping("/signup")
-    public UserResponse signup(@Valid @RequestBody UserInput userInput) {
-        return UserResponse.from(userService.signup(Role.GUEST, userInput));
+    /** Staff directory. Contact details are only filled in for managers and admins. */
+    @GetMapping
+    @PreAuthorize("isAuthenticated()")
+    public List<UserResponse> list(@RequestParam(required = false) String search,
+                                   @RequestParam(required = false) Role role,
+                                   @RequestParam(required = false) Boolean active) {
+        return userService.list(search, role, active);
     }
 
-    @GetMapping({"", "/"})
-    public List<UserResponse> getAllUsers() {
-        return userService.getAllUsers().stream().map(UserResponse::from).toList();
-    }
-
-    @PostMapping("/login")
-    public ResponseEntity<AuthenticationResponse> authenticate(
-            @Valid @RequestBody AuthenticationRequest authenticationRequest,
-            HttpServletResponse response) {
-        final var auth = userService.authenticate(authenticationRequest.username(), authenticationRequest.password());
-        response.addHeader(HttpHeaders.SET_COOKIE, buildAuthCookie(auth.token(), Duration.ofHours(1)).toString());
-        return ResponseEntity.ok(new AuthenticationResponse(
-                auth.message(), null, auth.name(), auth.username(), auth.role()));
-    }
-
-    @PostMapping("/logout")
-    public ResponseEntity<Map<String, String>> logout(HttpServletResponse response) {
-        response.addHeader(HttpHeaders.SET_COOKIE, buildAuthCookie("", Duration.ZERO).toString());
-        return ResponseEntity.ok(Map.of("message", "Logout successful"));
+    @GetMapping("/managers")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    public List<UserResponse> managers() {
+        return userService.managers();
     }
 
     @GetMapping("/{id}")
-    public UserResponse getUserById(@PathVariable Long id) {
-        return UserResponse.from(userService.getUserById(id));
+    @PreAuthorize("isAuthenticated()")
+    public UserResponse get(@PathVariable Long id) {
+        return userService.get(id);
     }
 
-    private ResponseCookie buildAuthCookie(String value, Duration maxAge) {
-        return ResponseCookie.from(AUTH_COOKIE, value)
-                .httpOnly(true)
-                .secure(true)
-                .path("/")
-                .maxAge(maxAge)
-                .sameSite("None")
-                .build();
+    @GetMapping("/{id}/profile")
+    @PreAuthorize("isAuthenticated()")
+    public ProfileResponse profile(@PathVariable Long id) {
+        return userService.profile(id);
+    }
+
+    @PostMapping
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    public ResponseEntity<UserResponse> create(@Valid @RequestBody CreateUserRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(userService.create(request));
+    }
+
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    public UserResponse update(@PathVariable Long id, @Valid @RequestBody UpdateUserRequest request) {
+        return userService.update(id, request);
+    }
+
+    @PatchMapping("/{id}/active")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    public UserResponse setActive(@PathVariable Long id, @Valid @RequestBody SetActiveRequest request) {
+        return userService.setActive(id, request.active());
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        userService.delete(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/me")
+    @PreAuthorize("isAuthenticated()")
+    public UserResponse updateMine(@Valid @RequestBody UpdateProfileRequest request) {
+        return userService.updateMine(request);
+    }
+
+    @PutMapping("/me/password")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<Void> changeMyPassword(@Valid @RequestBody ChangePasswordRequest request) {
+        userService.changeMyPassword(request);
+        return ResponseEntity.noContent().build();
     }
 }

@@ -1,23 +1,23 @@
 package be.ucll.se.courses.backend.enums;
 
-import com.fasterxml.jackson.annotation.JsonValue;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 
-import java.util.Locale;
-
+/**
+ * ADMIN manages everyone below them and sees everything.
+ * MANAGER runs the floor: employees, schedule, stock and orders.
+ * EMPLOYEE submits availability and sees their own published schedule.
+ */
 public enum Role {
     ADMIN,
-    EMPLOYEE,
-    GUEST;
+    MANAGER,
+    EMPLOYEE;
 
     public GrantedAuthority toGrantedAuthority() {
         return new SimpleGrantedAuthority("ROLE_" + name());
     }
 
-    @Override
-    @JsonValue
-    public String toString() {
-        return super.toString().toLowerCase(Locale.ROOT);
+    public boolean isManagement() {
+        return this == ADMIN || this == MANAGER;
     }
 }

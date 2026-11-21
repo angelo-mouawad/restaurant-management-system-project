@@ -22,4 +22,10 @@ public record UserDetailsImpl(User user) implements UserDetails {
     public Collection<? extends GrantedAuthority> getAuthorities() {
         return List.of(user.getRole().toGrantedAuthority());
     }
+
+    /** Deactivated accounts cannot sign in. */
+    @Override
+    public boolean isEnabled() {
+        return user.isActive();
+    }
 }

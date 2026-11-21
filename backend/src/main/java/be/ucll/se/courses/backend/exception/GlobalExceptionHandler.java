@@ -15,6 +15,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.LockedException;
+import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
@@ -52,6 +53,13 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.CONFLICT, exception.getMessage(), "That username is already taken.");
     }
 
+    @ExceptionHandler(BusinessRuleException.class)
+    public ResponseEntity<ApiError> handleBusinessRule(BusinessRuleException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiError.withCode(
+                HttpStatus.CONFLICT.value(), HttpStatus.CONFLICT.getReasonPhrase(),
+                exception.getCode(), exception.getMessage(), exception.getDetails()));
+    }
+
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiError> handleDataIntegrity(DataIntegrityViolationException exception) {
         log.warn("Data integrity violation: {}", exception.getMostSpecificCause().getMessage());
@@ -73,9 +81,12 @@ public class GlobalExceptionHandler {
         final List<String> details = exception.getBindingResult().getFieldErrors().stream()
                 .map(fieldError -> fieldError.getField() + ": " + fieldError.getDefaultMessage())
                 .toList();
-        final String message = details.isEmpty() ? "The submitted values are not valid." : String.join(", ", details);
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ApiError.of(HttpStatus.BAD_REQUEST.value(), HttpStatus.BAD_REQUEST.getReasonPhrase(), message, details));
+        final String message = exception.getBindingResult().getFieldErrors().stream()
+                .map(fieldError -> fieldError.getDefaultMessage())
+                .findFirst()
+                .orElse("The submitted values are not valid.");
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiError.withCode(
+                HttpStatus.BAD_REQUEST.value(), HttpStatus.BAD_REQUEST.getReasonPhrase(), "VALIDATION", message, details));
     }
 
     @ExceptionHandler(ConstraintViolationException.class)
@@ -83,9 +94,9 @@ public class GlobalExceptionHandler {
         final List<String> details = exception.getConstraintViolations().stream()
                 .map(ConstraintViolation::getMessage)
                 .toList();
-        final String message = details.isEmpty() ? "The submitted values are not valid." : String.join(", ", details);
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ApiError.of(HttpStatus.BAD_REQUEST.value(), HttpStatus.BAD_REQUEST.getReasonPhrase(), message, details));
+        final String message = details.isEmpty() ? "The submitted values are not valid." : details.get(0);
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiError.withCode(
+                HttpStatus.BAD_REQUEST.value(), HttpStatus.BAD_REQUEST.getReasonPhrase(), "VALIDATION", message, details));
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
@@ -115,7 +126,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler({DisabledException.class, LockedException.class})
     public ResponseEntity<ApiError> handleAccountUnavailable(Exception exception) {
-        return build(HttpStatus.FORBIDDEN, "This account is not available.", "This account is not available.");
+        return build(HttpStatus.FORBIDDEN, "This account has been deactivated. Ask a manager to reactivate it.", "This account is not available.");
     }
 
     @ExceptionHandler(AuthenticationException.class)
@@ -123,9 +134,13 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.UNAUTHORIZED, "Authentication is required.", "Authentication is required.");
     }
 
-    @ExceptionHandler(AccessDeniedException.class)
-    public ResponseEntity<ApiError> handleAccessDenied(AccessDeniedException exception) {
-        return build(HttpStatus.FORBIDDEN, "You are not allowed to perform this action.", "You are not allowed to perform this action.");
+    @ExceptionHandler({AccessDeniedException.class, AuthorizationDeniedException.class})
+    public ResponseEntity<ApiError> handleAccessDenied(Exception exception) {
+        final String message = exception instanceof AccessDeniedException && exception.getMessage() != null
+                && !exception.getMessage().equals("Access Denied")
+                ? exception.getMessage()
+                : "You are not allowed to perform this action.";
+        return build(HttpStatus.FORBIDDEN, message, "You are not allowed to perform this action.");
     }
 
     @ExceptionHandler(Exception.class)

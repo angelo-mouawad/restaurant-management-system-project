@@ -1,45 +1,89 @@
 # Restaurant Management System
 
-A full stack web app for running the day to day side of a restaurant: tracking stock levels, assigning staff to shifts, and pushing notifications to the people affected.
+Runs the day to day side of a restaurant: who works when, what's in the kitchen, what needs ordering, and who needs to know about it.
 
-Built as a university **scrum team project at UCLL following an agile aproach**. Spring Boot REST API on one side, Next.js App Router on the other, JWT auth in an httpOnly cookie between them.
+Started as a university **Scrum team project at UCLL**. A Spring Boot REST API on one side, a Next.js App Router frontend on the other, and JWT authentication in an httpOnly cookie between them.
 
 ## What it does
 
-**Stock management.** Admins can add items, increase or decrease quantities, and remove items that hit zero. Anything that drops below 10 units automatically fires a low stock notification.
+**Three roles, enforced by the API.**
 
-**Shift scheduling.** A fixed grid of 14 shifts (morning and evening, seven days). Employees can claim open shifts, admins can assign or unassign anyone. Both actions notify the affected user.
+| Role | What they can do |
+|---|---|
+| Admin | Everything a manager can, plus create, edit, deactivate and remove managers and employees. |
+| Manager | Create, edit, deactivate and remove employees. Plan the schedule, manage stock, suppliers and orders. |
+| Employee | Enter availability, see their own published schedule, read their notifications. |
 
-**Notifications.** Every user has their own feed, sorted newest first. Users can only read their own; admins can read anyone's.
+Every endpoint states its roles with `@PreAuthorize`, and the services add the finer rules (a manager can only touch employees, nobody manages their own account through the team routes). The role and active flag are read from the database on every request, so a deactivated user is signed out at once and a role change applies on their next click. The navigation only shows what a role can use.
 
-**Roles.** Admin, employee, and guest. Role checks run on the server, not just in the UI, so hiding a button is not the only thing standing between an employee and the stock endpoints.
+**Shift planning.**
+1. **Availability.** Employees mark days as available, preferred or unavailable, optionally with a time window and a note. They can select a whole week, copy a week onto later weeks, or apply a recurring weekly pattern. They can keep changing it until a manager locks that week.
+2. **Planning.** Managers see a grid with employees as rows and days as columns, coloured by availability. They assign shifts by clicking a cell or dragging a shift to another person or day. The board flags people booked on days they can't work, double bookings (always refused), weeks over someone's maximum hours, and shift types without enough staff. Saving something that raises a warning asks for confirmation first.
+3. **Draft, then published.** A week stays a draft only managers can see. Publishing makes it visible to the employees in it and notifies each of them. Any later change is written to the week's change log and sent to the people it affects.
+4. **Employee view.** A month calendar and a list view of published shifts, with total hours per week. Works on a phone.
 
-**Theme and language.** Light/dark mode and English/French, both persisted in the browser.
+Shift types (morning, lunch rush, evening, closing, or any custom one) have times, the weekdays they run on, and a minimum number of staff. A single shift can also use custom times.
+
+**Stock.**
+- Items have a category, unit, quantity, minimum threshold, supplier and cost per unit.
+- Quantities are never overwritten. Every change is a movement (delivery, usage, waste, correction) with a reason, the user and a timestamp, written in the same transaction as the new total and with the item row locked.
+- Dropping below the threshold notifies managers and admins.
+- Purchase orders go from draft to ordered to received. Receiving books every line into stock in one transaction, and it can't happen twice.
+- The stock page shows total value, items below their minimum and recent movements, and has search, category filters, sorting and paging. Each item has its own history.
+
+**Notifications.** Stored per person, with read and unread state, a badge in the header, mark as read and mark all as read. They are raised by domain events inside the services, never by the browser:
+
+| Event | Who is notified |
+|---|---|
+| An employee saves availability | Their manager (or every manager if they have none) |
+| A week is published | Every employee in it |
+| A published shift is added, moved or cancelled | The employee affected |
+| Stock drops below its minimum | Managers and admins |
+| A purchase order is received | Managers and admins |
+| An account is created, or its role changes | That person |
+
+Each notification links to the page to act on. French readers see them rebuilt in French from the values they were made from.
+
+**Profiles.** Everyone has a profile with name, role, position, join date and initials. Employees see their upcoming shifts; managers see their team. Contact details are only visible to management and the person themselves. Everyone can edit their own name, email and phone, and change their password.
+
+**Theme and language.** Light and dark mode, English and French.
 
 ## Stack
 
 | Layer | Tech |
 |---|---|
-| API | Spring Boot 3.5.5, Java 21, Maven |
-| Database | PostgreSQL (H2 in memory for tests) |
+| API | Spring Boot 3.5, Java 21, Maven |
+| Database | PostgreSQL with Flyway migrations (H2 in memory for tests) |
 | Auth | Spring Security, OAuth2 resource server, HS256 JWT in an httpOnly cookie |
 | Docs | springdoc OpenAPI / Swagger UI |
 | Frontend | Next.js 15 (App Router), React 19, TypeScript |
-| Styling | Tailwind CSS |
-| Data fetching | SWR on the client, server components for initial loads |
+| Styling | Tailwind CSS, lucide-react icons |
+| Data fetching | SWR |
 
 ## Layout
 
 ```
-backend/     Spring Boot API, runs on port 3000
-frontend/    Next.js app, runs on port 8080
+backend/
+  src/main/java/.../backend/
+    controller/     REST endpoints, one per area, each method with its roles
+    service/        business rules and transactions
+    repository/     Spring Data repositories
+    model/          JPA entities
+    dtos/           request and response records, with validation
+    events/         domain events and the listener that turns them into notifications
+    config/         security, JWT, CORS, OpenAPI
+  src/main/resources/db/migration/   Flyway migrations
+frontend/
+  app/              routes: home, schedule (my, availability, planning, shift-types), stock (items,
+                    movements, orders, suppliers), team, notifications, profile
+  components/       ui/ is the shared kit (buttons, tables, dialogs, skeletons, empty and error states)
+  locales/          English and French text
+  services/         API calls
 ```
-
-The backend follows a controller / service / repository split, with entities in `model`, request and response shapes in `dtos`, and a single `GlobalExceptionHandler` that maps every exception to a JSON body with a `message` field.
 
 ## Running it
 
-You need JDK 21, Maven 3.9+, Node 18.18+, and a running PostgreSQL.
+You need JDK 21+, Maven 3.9+, Node 18.18+, and PostgreSQL.
 
 ### 1. Database
 
@@ -49,7 +93,13 @@ Create an empty database:
 CREATE DATABASE "restaurant-management-system";
 ```
 
-Tables are created on first boot from `backend/src/main/resources/schema.sql`, and sample users, stock, shifts, and notifications are seeded automatically. The seeder skips itself if the database already has users, so your data survives restarts.
+Or run one in Docker:
+
+```bash
+docker run -d --name rms-postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=restaurant-management-system -p 5432:5432 postgres:16-alpine
+```
+
+Flyway creates the schema on first boot. A database from the previous version of this app is upgraded in place: its users (guests become employees), stock items and notifications are kept, and the old weekday shift slots are replaced by dated shifts.
 
 ### 2. Backend
 
@@ -58,9 +108,7 @@ cd backend
 mvn spring-boot:run
 ```
 
-API comes up on `http://localhost:3000`. Swagger UI is at `http://localhost:3000/swagger-ui.html`, and there is a health check at `http://localhost:3000/status`.
-
-Defaults assume Postgres on localhost with user and password both `postgres`. Override with environment variables if yours differs:
+The API runs on `http://localhost:3000`, with Swagger UI at `http://localhost:3000/swagger-ui.html` and a health check at `/status`. On first start it fills the database with demo data (see below). Each part of the demo data only runs when its tables are empty, so restarts keep your changes.
 
 | Variable | Default |
 |---|---|
@@ -70,6 +118,7 @@ Defaults assume Postgres on localhost with user and password both `postgres`. Ov
 | `SERVER_PORT` | `3000` |
 | `FRONTEND_ORIGIN` | `http://localhost:8080` |
 | `JWT_SECRET_KEY` | empty, see below |
+| `SEED_DEMO_DATA` | `true`; set to `false` to start empty |
 
 ### 3. Frontend
 
@@ -82,81 +131,61 @@ npm run dev
 
 Open `http://localhost:8080`.
 
-### Demo accounts
-
-| Username | Password | Role |
-|---|---|---|
-| `angelo` | `angelo123` | admin |
-| `hunein` | `hunein123` | employee |
-
-Seed credentials for local development. Change them before putting this anywhere real.
-
-## A note on the JWT secret
-
-If `JWT_SECRET_KEY` is not set, the app generates a random 256 bit key at startup. That works fine, but it means every restart invalidates existing sessions and everyone has to log in again. For a stable local setup, generate one yourself and export it:
-
-```bash
-export JWT_SECRET_KEY=$(openssl rand -base64 32)
-```
-
-It has to be base64 and decode to at least 32 bytes, otherwise HS256 signing will refuse it and startup fails with a clear message.
-
-## API
-
-All routes require authentication except the four marked public. The token travels in an httpOnly `authToken` cookie, so the browser handles it and JavaScript cannot read it.
-
-| Method | Route | Access |
-|---|---|---|
-| GET | `/status` | public |
-| POST | `/users/signup` | public |
-| POST | `/users/login` | public |
-| POST | `/users/logout` | public |
-| GET | `/users` | any signed in user |
-| GET | `/users/{id}` | any signed in user |
-| GET | `/stockItem` | any signed in user |
-| POST | `/stockItem` | admin |
-| POST | `/stockItem/{id}/increase` | admin |
-| POST | `/stockItem/{id}/decrease` | admin |
-| DELETE | `/stockItem/{id}/remove` | admin |
-| GET | `/scheduleItem` | any signed in user |
-| POST | `/scheduleItem/{id}/assign/{userId}` | any signed in user |
-| POST | `/scheduleItem/{id}/unassign` | admin |
-| GET | `/notifications/{username}` | that user, or admin |
-| POST | `/notifications` | any signed in user |
-
-Errors always come back in the same shape, which is what the frontend reads to show a useful message:
-
-```json
-{
-  "timestamp": "2026-08-21T14:30:00",
-  "status": 404,
-  "error": "Not Found",
-  "message": "Stock item with id 42 not found",
-  "details": []
-}
-```
-
-## Tests
+### Tests
 
 ```bash
 cd backend
 mvn test
 ```
 
-Unit tests cover the services and entity validation with Mockito. Integration tests boot the full application against in memory H2 and cover the auth flow plus the error paths: expired and garbage tokens, role violations, validation failures, malformed request bodies, and missing resources.
+The integration tests cover role checks, contact privacy, deactivation, drafts staying hidden until published, conflict warnings and double booking, the change log, availability locking, stock movements and low stock alerts, and receiving orders.
+
+## Demo accounts
+
+Every password is the username followed by `123`.
+
+| Username | Role | Notes |
+|---|---|---|
+| `angelo` | Admin | Owner |
+| `sara` | Manager | Floor manager, team: Hunein, Lina, Youssef, Emma |
+| `tom` | Manager | Kitchen manager, team: Noah, Mila, Lucas, Nora |
+| `hunein`, `lina`, `youssef`, `emma` | Employee | Front of house |
+| `noah`, `mila`, `lucas`, `nora` | Employee | Kitchen |
+
+The demo data:
+- **Schedule:** last week and this week are published. Next week is a draft with availability locked, a few gaps, and one deliberate conflict (Hunein on the day of his exam). The week after is still empty.
+- **Availability:** about five weeks of availability for most employees. Nora only filled in three.
+- **Stock:** 30 stock items with four weeks of history, several of them below their minimum, from 4 suppliers.
+- **Orders:** one in each state. The one from Slagerij Peeters is on its way and can be received.
+
+These are local development credentials. Change them before putting this anywhere real.
+
+## A note on the JWT secret
+
+If `JWT_SECRET_KEY` is not set, the app generates a random 256 bit key at startup. That works, but every restart signs everyone out. For a stable setup, generate one and export it:
 
 ```bash
-cd frontend
-npm run typecheck
-npm run build
+export JWT_SECRET_KEY=$(openssl rand -base64 32)
 ```
 
-## Things worth knowing
+It has to be base64 and decode to at least 32 bytes, otherwise startup stops with a clear message.
 
-Both apps run on `localhost` in development, which is what makes the cookie work across ports. If you deploy the API and the frontend to different domains, you will need to revisit the cookie domain and the route guard in `frontend/middleware.ts`, since that guard checks for the cookie's presence on the frontend's own domain.
+## API overview
 
-The frontend degrades rather than crashing when the API is unreachable. Pages render, the failure is shown inline, and there are error boundaries at the route and application level as a backstop.
+All routes need a signed-in user except `/status`, `/auth/login` and `/auth/logout`. Swagger UI lists every route with its request and response shapes.
 
-## Author
+| Area | Routes | Roles |
+|---|---|---|
+| Auth | `POST /auth/login`, `POST /auth/logout`, `GET /auth/me` | public / any |
+| Users | `GET /users`, `GET /users/{id}`, `GET /users/{id}/profile`, `PUT /users/me`, `PUT /users/me/password` | any (contact details filtered) |
+| Users | `POST /users`, `PUT /users/{id}`, `PATCH /users/{id}/active`, `DELETE /users/{id}`, `GET /users/managers` | admin, manager |
+| Availability | `GET/PUT /availability/me`, `POST /availability/me/copy-week`, `POST /availability/me/recurring` | employee |
+| Availability | `GET /availability` | admin, manager |
+| Schedule | `GET /schedule/me` | employee |
+| Schedule | `GET /schedule/planning`, `GET /schedule/periods`, `POST/PUT/DELETE /schedule/shifts`, `POST /schedule/periods/{week}/publish`, `/lock`, `/unlock`, `GET /schedule/periods/{week}/changes` | admin, manager |
+| Shift types | `GET /shift-types` | any |
+| Shift types | `POST/PUT/DELETE /shift-types` | admin, manager |
+| Stock | `/stock/overview`, `/stock/items`, `/stock/items/{id}/movements`, `/stock/movements`, `/stock/suppliers`, `/stock/orders` and their actions | admin, manager |
+| Notifications | `GET /notifications`, `GET /notifications/unread-count`, `POST /notifications/{id}/read`, `POST /notifications/read-all` | own only |
 
-Angelo Mouawad
+Errors always have the same shape: `status`, `error`, `message`, a stable `code` where it helps (for example `SHIFT_WARNINGS`, `SHIFT_DOUBLE_BOOKED`, `INSUFFICIENT_STOCK`) and `details`.

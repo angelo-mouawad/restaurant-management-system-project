@@ -1,18 +1,23 @@
 package be.ucll.se.courses.backend.model;
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import be.ucll.se.courses.backend.enums.NotificationType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
-import jakarta.persistence.PrePersist;
-import jakarta.validation.constraints.NotNull;
 
 import java.time.LocalDateTime;
 
+/**
+ * Stored per recipient. The title and message are written in English; type and params let the
+ * frontend render the same notice in the reader's language.
+ */
 @Entity
 public class Notification {
 
@@ -20,77 +25,54 @@ public class Notification {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @NotNull
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private NotificationType type;
+
+    @Column(nullable = false)
+    private String title;
+
     @Column(nullable = false, length = 1000)
     private String message;
 
-    @NotNull
-    @Column(nullable = false)
-    private LocalDateTime createdAt;
+    /** JSON object with the values the message was built from. */
+    @Column(length = 2000)
+    private String params;
 
-    @ManyToOne
-    @JoinColumn(name = "stock_item_id")
-    @JsonIgnoreProperties({"notifications"})
-    private StockItem stockItem;
+    /** Frontend route the notification points to. */
+    private String link;
 
-    @ManyToOne
-    @JoinColumn(name = "user_id")
-    @JsonIgnoreProperties({"notifications", "schedule", "password"})
-    private User user;
+    @Column(name = "created_at", nullable = false)
+    private LocalDateTime createdAt = LocalDateTime.now();
+
+    @Column(name = "read_at")
+    private LocalDateTime readAt;
 
     protected Notification() {}
 
-    public Notification(String message, LocalDateTime createdAt, StockItem stockItem, User user) {
-        this.message = message;
-        this.createdAt = createdAt;
-        this.stockItem = stockItem;
+    public Notification(User user, NotificationType type, String title, String message, String params, String link) {
         this.user = user;
-    }
-
-    @PrePersist
-    public void onCreate() {
-        if (this.createdAt == null) {
-            this.createdAt = LocalDateTime.now();
-        }
-    }
-
-    public Long getId() {
-        return id;
-    }
-
-    public void setId(Long id) {
-        this.id = id;
-    }
-
-    public String getMessage() {
-        return message;
-    }
-
-    public void setMessage(String message) {
+        this.type = type;
+        this.title = title;
         this.message = message;
+        this.params = params;
+        this.link = link;
     }
 
-    public LocalDateTime getCreatedAt() {
-        return createdAt;
-    }
-
-    public void setCreatedAt(LocalDateTime createdAt) {
-        this.createdAt = createdAt;
-    }
-
-    public StockItem getStockItem() {
-        return stockItem;
-    }
-
-    public void setStockItem(StockItem stockItem) {
-        this.stockItem = stockItem;
-    }
-
-    public User getUser() {
-        return user;
-    }
-
-    public void setUser(User user) {
-        this.user = user;
-    }
+    public Long getId() { return id; }
+    public User getUser() { return user; }
+    public NotificationType getType() { return type; }
+    public String getTitle() { return title; }
+    public String getMessage() { return message; }
+    public String getParams() { return params; }
+    public String getLink() { return link; }
+    public LocalDateTime getCreatedAt() { return createdAt; }
+    /** Seed data only, to spread demo notifications over past days. */
+    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+    public LocalDateTime getReadAt() { return readAt; }
+    public void setReadAt(LocalDateTime readAt) { this.readAt = readAt; }
 }

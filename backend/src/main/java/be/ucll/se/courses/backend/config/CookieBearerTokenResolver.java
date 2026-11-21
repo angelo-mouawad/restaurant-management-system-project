@@ -8,14 +8,15 @@ import org.springframework.security.oauth2.server.resource.web.DefaultBearerToke
 import java.util.Arrays;
 import java.util.Set;
 
+/** Reads the token from the Authorization header, or else from the httpOnly auth cookie. */
 public class CookieBearerTokenResolver implements BearerTokenResolver {
 
-    private static final String AUTH_COOKIE = "authToken";
+    public static final String AUTH_COOKIE = "authToken";
 
+    /** Public routes ignore any token, so a stale cookie can never block signing in again. */
     private static final Set<String> UNPROTECTED_PATHS = Set.of(
-            "/users/login",
-            "/users/signup",
-            "/users/logout",
+            "/auth/login",
+            "/auth/logout",
             "/status",
             "/error");
 

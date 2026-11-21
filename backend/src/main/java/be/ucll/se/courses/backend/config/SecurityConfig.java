@@ -33,6 +33,10 @@ import javax.crypto.spec.SecretKeySpec;
 import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
 
+/**
+ * Stateless JWT security. Every endpoint outside the public list needs a valid token, and each
+ * controller method also states which roles may call it with {@code @PreAuthorize}.
+ */
 @Configuration
 @EnableMethodSecurity
 @EnableConfigurationProperties(JwtProperties.class)
@@ -49,12 +53,13 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http,
             AuthenticationEntryPoint jsonAuthenticationEntryPoint,
-            AccessDeniedHandler jsonAccessDeniedHandler) throws Exception {
+            AccessDeniedHandler jsonAccessDeniedHandler,
+            DatabaseJwtAuthenticationConverter jwtAuthenticationConverter) throws Exception {
         return http
                 .authorizeHttpRequests(authorizeRequests -> authorizeRequests
                         .requestMatchers("/status").permitAll()
                         .requestMatchers("/error", "/error/**").permitAll()
-                        .requestMatchers("/users/signup", "/users/login", "/users/logout").permitAll()
+                        .requestMatchers("/auth/login", "/auth/logout").permitAll()
                         .requestMatchers("/v3/api-docs/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .anyRequest().authenticated())
@@ -65,7 +70,7 @@ public class SecurityConfig {
                         .authenticationEntryPoint(jsonAuthenticationEntryPoint)
                         .accessDeniedHandler(jsonAccessDeniedHandler))
                 .oauth2ResourceServer(resourceServer -> resourceServer
-                        .jwt(Customizer.withDefaults())
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter))
                         .bearerTokenResolver(new CookieBearerTokenResolver())
                         .authenticationEntryPoint(jsonAuthenticationEntryPoint)
                         .accessDeniedHandler(jsonAccessDeniedHandler))
